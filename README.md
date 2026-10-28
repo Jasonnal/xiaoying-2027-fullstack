@@ -391,7 +391,12 @@ push / PR 触发，4 个 job：
 
 **验证**：`mvn test`（7 个用例）→ 本地起服务用 curl 跑通"登录 → 上传 → 受理 → 轮询 → 结果图"→ 用模拟接口触发失败 → 目检结果 JPEG → 前端 `lint/typecheck/test/build`。**验证环节全部由我执行，模型输出只作为初稿。**
 
-## 15. 第三方来源与复用
+## 15. 验收信息与第三方来源
+
+- **功能提交**：`4970804`（特性完整实现）；验收请以仓库 HEAD 为准（`git log -1`），文档微调不影响功能
+- **仓库结构**：单仓双端（`backend/` + `frontend/`），根目录即 Compose 启动点
+
+### 第三方来源与复用
 
 - 框架与库均为开源依赖，见 `backend/pom.xml`、`frontend/package.json` 与锁文件。
 - 模板封面为 `tools/generate_covers.py` 自绘 SVG，无第三方素材。
