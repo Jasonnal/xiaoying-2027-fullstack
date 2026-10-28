@@ -1,0 +1,63 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: material-studio-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123}
+      MYSQL_DATABASE: material_studio
+      MYSQL_USER: studio
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-studio123}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+    ports:
+      # 宿主机 3306 常被本机 MySQL 占用，这里映射到 3307；容器内部仍是 3306
+      - "3307:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  backend:
+    build:
+      context: ./backend
+    container_name: material-studio-backend
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/material_studio?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      DB_USER: studio
+      DB_PASSWORD: ${MYSQL_PASSWORD:-studio123}
+      STORAGE_ROOT: /app/storage
+      # 容器内把每一步的模拟耗时调到 2 秒，方便肉眼观察阶段流转
+      SIM_STAGE_DELAY_MS: "2000"
+      PIPELINE_WORKERS: "2"
+      TZ: Asia/Shanghai
+    volumes:
+      - media:/app/storage
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # 构建期与运行期都指向容器网络里的 backend；运行时仍可通过 BACKEND_URL 覆盖
+        BACKEND_URL: http://backend:8080
+    container_name: material-studio-frontend
+    environment:
+      BACKEND_URL: http://backend:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  mysql-data:
+  media:

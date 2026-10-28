@@ -1,0 +1,19 @@
+# 构建产物
+**/target/
+**/.next/
+**/node_modules/
+**/out/
+**/coverage/
+*.log
+
+# 运行时数据（上传素材/结果图/测试存储）
+backend/storage/
+backend/target/test-storage/
+
+# 本地环境变量
+.env
+.env.local
+frontend/.env.local
+
+# 系统
+.DS_Store

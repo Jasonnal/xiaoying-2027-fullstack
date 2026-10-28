@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend · test & package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Test and build
+        working-directory: backend
+        run: mvn -B verify
+
+  frontend:
+    name: Frontend · lint / typecheck / test / build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+      - name: Type check
+        working-directory: frontend
+        run: npm run typecheck
+      - name: Unit tests
+        working-directory: frontend
+        run: npm test
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+        env:
+          BACKEND_URL: http://127.0.0.1:8080
+
+  mysql-smoke:
+    name: Backend · real MySQL smoke
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: material_studio
+          MYSQL_USER: studio
+          MYSQL_PASSWORD: studio123
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Package
+        working-directory: backend
+        run: mvn -B -DskipTests package
+      - name: Boot against MySQL 8 and hit the API
+        working-directory: backend
+        env:
+          DB_URL: jdbc:mysql://127.0.0.1:3306/material_studio?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false
+          DB_USER: studio
+          DB_PASSWORD: studio123
+          SIM_STAGE_DELAY_MS: "0"
+        run: |
+          java -jar target/material-studio-1.0.0.jar > app.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:8080/api/health > /dev/null; then break; fi
+            sleep 2
+          done
+          echo "--- health ---"
+          curl -fsS http://127.0.0.1:8080/api/health
+          echo
+          echo "--- templates (count) ---"
+          curl -fsS http://127.0.0.1:8080/api/templates | head -c 400
+          echo
+          tail -30 app.log
+
+  compose:
+    name: Docker · compose build
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose file
+        run: docker compose config -q
+      - name: Build images
+        run: docker compose build

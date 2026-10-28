@@ -1,0 +1,68 @@
+server:
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: material-studio
+  datasource:
+    url: ${DB_URL:jdbc:mysql://127.0.0.1:3306/material_studio?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${DB_USER:studio}
+    password: ${DB_PASSWORD:studio123}
+    hikari:
+      maximum-pool-size: 10
+      pool-name: material-studio-pool
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema.sql
+      encoding: UTF-8
+      continue-on-error: false
+  servlet:
+    multipart:
+      max-file-size: 12MB
+      max-request-size: 48MB
+  jackson:
+    default-property-inclusion: always
+    serialization:
+      write-dates-as-timestamps: false
+  web:
+    resources:
+      add-mappings: false
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+    # record 实体依赖构造参数名映射（编译已开启 -parameters）
+    arg-name-based-constructor-auto-mapping: true
+    default-fetch-size: 100
+    default-statement-timeout: 15
+
+app:
+  storage:
+    root: ${STORAGE_ROOT:./storage}
+    public-base-path: /api/files
+  pipeline:
+    # 每一步的模拟耗时（毫秒），可通过 /api/dev/simulation 在运行时调整
+    stage-delay-ms: ${SIM_STAGE_DELAY_MS:1200}
+    # 后台执行线程数：>1 时多任务并行，=1 时串行排队
+    worker-threads: ${PIPELINE_WORKERS:2}
+    queue-capacity: ${PIPELINE_QUEUE:200}
+    # true 时任务同步执行（仅测试使用）
+    synchronous: ${PIPELINE_SYNCHRONOUS:false}
+  simulation:
+    # 默认不失败；可用 POST /api/dev/simulation 覆盖
+    fail-stage: ${SIM_FAIL_STAGE:NONE}
+    fail-count: ${SIM_FAIL_COUNT:0}
+  auth:
+    cookie-name: ms_session
+    session-ttl-hours: 168
+  cors:
+    # 本地开发时前端直连后端用；生产走 Next.js 中间层，可留空
+    allowed-origins: ${CORS_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
+
+logging:
+  level:
+    root: INFO
+    com.xiaoying.studio: INFO
+    org.springframework.jdbc.datasource.init: WARN

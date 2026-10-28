@@ -1,0 +1,39 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:studio;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema-h2.sql
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+    arg-name-based-constructor-auto-mapping: true
+
+app:
+  storage:
+    root: ./target/test-storage
+    public-base-path: /api/files
+  pipeline:
+    stage-delay-ms: 0
+    worker-threads: 1
+    queue-capacity: 10
+    # 测试里同步执行，create() 返回时流水线已经跑完，可以直接断言
+    synchronous: true
+  simulation:
+    fail-stage: NONE
+    fail-count: 0
+  auth:
+    cookie-name: ms_session
+    session-ttl-hours: 1
+  cors:
+    allowed-origins: ""
+
+logging:
+  level:
+    root: WARN
+    com.xiaoying.studio: INFO
