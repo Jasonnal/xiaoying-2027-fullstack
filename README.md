@@ -91,10 +91,11 @@ docker compose up --build
 首次启动后端会自动建表并写入 8 个模板与 3 个演示账号；`storage` 与 `mysql-data` 为命名数据卷。
 停止：`docker compose down`；连同数据一起清空：`docker compose down -v`。
 
-> 本机（macOS，无 Docker Desktop 且不能 sudo）没有 Docker，**未在本机执行过 `docker compose up`**。
-> 该路径由 CI 的 `compose` job 真实验证：`docker compose up -d` 起整栈 → 等前后端就绪 → 依次走完
-> 「账号登录 → 上传素材 → 受理 → 轮询至成功 → 拉取结果图 → 触发指定阶段失败」全链路，
-> 每次 push 自动执行（见第 11 节的 run 记录与日志摘录）。
+> 该命令在本机（macOS arm64，无 Docker Desktop、无 sudo）用 colima 起了用户级 Linux VM 实际跑通：
+> 三容器 `Up`，随后走完「账号登录 → 上传素材 → 受理 → 轮询至成功 → 拉取结果图 → 触发指定阶段失败」全链路；
+> CI 的 `compose` job 每次 push 也会 `up -d` 复跑一遍（见第 11 节的 run 记录与日志摘录）。
+> 本机无 Docker Desktop 时的等效做法：`brew install colima docker docker-compose && colima start`，
+> 之后的 `docker compose` 命令完全一致。
 
 ### 4.2 方式 B：本机直接运行
 
@@ -377,7 +378,7 @@ ALTER TABLE app_user ADD COLUMN password_hash VARCHAR(100) NOT NULL DEFAULT '' A
 | 锁文件一致性 | `npm ci --dry-run` | 通过 |
 | standalone 运行 | `node .next/standalone/server.js` | 200，静态资源正常 |
 | 手工链路 | 浏览器实跑 | 登录 → 上传（进度）→ 受理 → 阶段推进 → 结果预览；`GENERATE` 失败中断；停后端出现异常提示且可重试；切换账号后历史为空 |
-| Compose | `docker compose config -q` / `up` | **未执行**（本机无 Docker），仅做 YAML 结构解析 |
+| 本机容器 | `docker compose up -d --build`（colima + vz） | 三容器 Up（mysql healthy），E2E 全通过：`SUCCEEDED/DONE`、结果图 `200 image/jpeg 25917B`、`GENERATE` 失败无结果 |
 
 ### CI 实测（GitHub Actions，2026-10-28）
 
@@ -423,7 +424,7 @@ push / PR 触发，4 个 job：
 
 1. **重启恢复**：不实现"服务重启后自动继续执行"。重启时处于 `PROCESSING` 的任务会停留在该状态（题目明确列入"不在范围内"）。取舍：需要持久化调度与租约，代价远超本题范围；README 记录而不隐藏。
 2. **受理幂等 / 断点续跑 / 自动重试**：未实现（题目不要求）。幂等可由客户端 `requestId` + 唯一索引实现，50 行内可加，但会改变接口契约，故只在此讨论。
-3. **Docker 只在本机之外验证过**：本机无 Docker 且不能 `sudo`，未在本机执行 `docker compose up`；容器交付改由 CI 在 GitHub 的 Docker 环境里起整栈并跑端到端冒烟（含真实上传与结果图），已通过。仍未覆盖：arm64 本机镜像构建、容器内长时间运行观察。
+3. **容器验证范围**：本机（arm64）已用 colima 起 VM 跑通 `docker compose up -d --build` 全链路，CI 每次 push 复跑；仍未覆盖：除 arm64/amd64 外的架构、容器长时间运行与资源压力观察。
 4. **身份是自建账号密码**：BCrypt 存储、会话存库（非 JWT），没有邮箱验证、找回密码、限流与验证码；生产还需加登录失败计数与 CSRF 防护。
 5. **`/api/dev/**` 无鉴权**：仅用于验收演示，生产应移除或加开关（可用 `app.simulation.enabled=false` 关闭，当前未加该开关）。
 6. **结果图排版**：固定三种布局（1/2/3 张），4 张模板只取前 3 张参与合成；画布文字仅 ASCII。
