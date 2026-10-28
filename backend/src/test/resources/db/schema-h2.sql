@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS app_user (
   id           CHAR(36)    NOT NULL PRIMARY KEY,
   handle       VARCHAR(64) NOT NULL UNIQUE,
   display_name VARCHAR(64) NOT NULL,
+  password_hash VARCHAR(100) NOT NULL,
   accent_color VARCHAR(16) NOT NULL,
   created_at   TIMESTAMP(3) NOT NULL
 );

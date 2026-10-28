@@ -72,11 +72,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           onClick={() => setSwitching(false)}
         >
           <div
-            className="panel w-full max-w-md p-6 animate-rise"
+            className="panel max-h-[90vh] w-full max-w-md overflow-y-auto p-6 animate-rise"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
-              <p className="text-sm font-medium text-chalk-100">切换账号</p>
+              <p className="text-sm font-medium text-chalk-100">切换 / 登录账号</p>
               <button
                 type="button"
                 className="btn-ghost !px-2.5 !py-1 !text-xs"

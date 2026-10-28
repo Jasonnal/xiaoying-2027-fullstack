@@ -70,7 +70,7 @@ export function useJobs(enabled: boolean) {
 
 export function useLogin() {
   const queryClient = useQueryClient();
-  return useMutation<Me, ApiError, { handle: string; displayName?: string }>({
+  return useMutation<Me, ApiError, { handle: string; password: string }>({
     mutationFn: (input) =>
       apiFetch<Me>("/api/auth/session", {
         method: "POST",
@@ -78,6 +78,21 @@ export function useLogin() {
       }),
     onSuccess: (me) => {
       // 先落新身份，再把任务缓存整体重置：旧账号的任务/请求结果不会残留（R-08）
+      queryClient.setQueryData(queryKeys.me, me);
+      void queryClient.resetQueries({ queryKey: queryKeys.jobs });
+    },
+  });
+}
+
+export function useRegister() {
+  const queryClient = useQueryClient();
+  return useMutation<Me, ApiError, { handle: string; password: string; displayName?: string }>({
+    mutationFn: (input) =>
+      apiFetch<Me>("/api/auth/register", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: (me) => {
       queryClient.setQueryData(queryKeys.me, me);
       void queryClient.resetQueries({ queryKey: queryKeys.jobs });
     },

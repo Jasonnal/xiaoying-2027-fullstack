@@ -174,7 +174,7 @@ class JobPipelineIntegrationTest {
         JobService.JobResponse accepted = jobService.create(owner, "travel-postcard",
                 List.of(first.id(), second.id()));
 
-        AppUser intruder = authService.login("intruder", "闯入者");
+        AppUser intruder = authService.register("intruder", "闯入者", "intruder123");
 
         assertThatThrownBy(() -> jobService.create(intruder, "travel-postcard",
                 List.of(first.id(), second.id())))

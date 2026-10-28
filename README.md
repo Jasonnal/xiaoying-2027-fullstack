@@ -30,13 +30,17 @@ Next.js (App Router)  ──/api/*──▶  Spring Boot  ──MyBatis──▶
 
 ## 2. 界面预览
 
-| 模板列表 | 详情 + 上传 + 处理中 |
+| 账号密码登录 | 模板列表 |
 |---|---|
-| ![模板列表](docs/screenshots/01-templates.png) | ![详情](docs/screenshots/02-detail-processing.png) |
+| ![登录](docs/screenshots/00-login.png) | ![模板列表](docs/screenshots/01-templates.png) |
 
-| 历史记录（含失败原因） | 查询异常（不判定任务失败） |
+| 详情 + 上传 + 处理中 | 历史记录 |
 |---|---|
-| ![历史](docs/screenshots/03-history.png) | ![异常](docs/screenshots/04-request-error.png) |
+| ![详情](docs/screenshots/02-detail-processing.png) | ![历史](docs/screenshots/03-history.png) |
+
+| 查询异常（不判定任务失败） |
+|---|
+| ![异常](docs/screenshots/04-request-error.png) |
 
 ## 3. 项目结构
 
@@ -76,7 +80,7 @@ material-studio/
 docker compose up --build
 ```
 
-- 前端 http://localhost:3000
+- 前端 http://localhost:3000（演示账号 `demo` / `lin` / `chen`，口令 `demo1234`）
 - 后端 http://localhost:8080（健康检查 `/api/health`）
 - MySQL 容器内 3306，宿主机映射 **3307**（避开本机已有 MySQL）
 
@@ -145,7 +149,7 @@ npm run dev                  # http://localhost:3000
 ## 6. 数据库、初始化数据与素材
 
 - **表结构**：`backend/src/main/resources/db/schema.sql`，全部 `CREATE TABLE IF NOT EXISTS`，应用启动时执行（`spring.sql.init.mode=always`），可反复启动不报错。
-- **表**：`app_user`、`app_session`、`template`、`asset`、`creation_job`、`job_asset`、`job_event`。
+- **表**：`app_user`（含 BCrypt 口令哈希）、`app_session`、`template`、`asset`、`creation_job`、`job_asset`、`job_event`。
 - **初始化数据**：`config/DemoDataSeeder` 在模板表为空时写入 8 个模板（5 个分类，素材需求 1/2/3/4 张不等），并补齐 3 个演示账号。放在代码里而非 `seed.sql`，是为了让 MySQL 与测试用 H2 共用一份数据，避免两套 SQL 漂移。
 - **素材**：8 张封面是随包发布的 SVG（`backend/src/main/resources/demo/covers/`），由 `tools/generate_covers.py` 生成，无外部图床、无版权风险。用户上传素材落盘在 `storage/uploads/yyyy/MM/<uuid>.<ext>`，结果图在 `storage/results/<jobId>.jpg`。
 
@@ -156,8 +160,9 @@ npm run dev                  # http://localhost:3000
 | 方法 | 路径 | 说明 | 鉴权 |
 |---|---|---|---|
 | `GET` | `/api/health` | 健康检查 | 否 |
-| `GET` | `/api/auth/accounts` | 演示账号列表 | 否 |
-| `POST` | `/api/auth/session` | 登录/切换账号，下发 HttpOnly Cookie | 否 |
+| `GET` | `/api/auth/accounts` | 演示账号列表（含演示口令，仅演示用） | 否 |
+| `POST` | `/api/auth/session` | 账号 + 密码登录，下发 HttpOnly Cookie | 否 |
+| `POST` | `/api/auth/register` | 注册并直接登录（BCrypt 存哈希） | 否 |
 | `DELETE` | `/api/auth/session` | 退出 | 否 |
 | `GET` | `/api/me` | 当前用户 | 是 |
 | `GET` | `/api/templates?category=` | 模板列表（含分类清单） | 否 |
@@ -300,10 +305,29 @@ curl -s -X POST http://localhost:8080/api/dev/simulation \
 
 ## 10. 用户身份与个人记录
 
-- **方案**：演示型「handle 即身份」，无口令。`POST /api/auth/session` 传 `{handle}`，服务端查找或创建用户，签发不透明 UUID 令牌存 `app_session` 表，通过 `HttpOnly; SameSite=Lax` Cookie 下发（默认 7 天）。
-- **隔离**：任务、素材都带 `user_id`；查询与提交都按当前用户过滤，拿别人的 `assetId` 会 403，读别人的任务返回 404（不泄露存在性）。
-- **切换/退出**：右上角账号菜单可切换 3 个演示账号或退出；切换时前端 `queryClient.clear()`，后端换发新 Cookie。旧标签页会因 Cookie 被替换而自然读到新身份，避免串号。
-- **演示方法**：用「演示账号」提交两个任务 → 切到「林小满」→ 历史为空 → 再切回「演示账号」→ 任务仍在。
+**方案：自建账号 + 密码（BCrypt），不做第三方登录。**
+
+| 环节 | 实现 |
+|---|---|
+| 注册 | `POST /api/auth/register`：账号（2-32 位，字母/数字/`_`/`-`，统一转小写）+ 密码（6-64 位）+ 可选昵称；账号重复返回 `409 HANDLE_TAKEN` |
+| 存储 | `app_user.password_hash` 存 **BCrypt** 哈希（`spring-security-crypto`，只引哈希工具，不启用 Security 过滤器链），明文永不落库、永不返回 |
+| 登录 | `POST /api/auth/session`：校验失败统一返回 `401 INVALID_CREDENTIALS / 账号或密码不正确`，不区分"账号不存在"与"密码错误"，避免账号枚举 |
+| 会话 | 登录/注册成功签发不透明 UUID 令牌，存 `app_session` 表（含过期时间），通过 `HttpOnly; SameSite=Lax; Path=/` Cookie 下发，默认 7 天；退出即删库中令牌并清 Cookie |
+| 隔离 | `creation_job` / `asset` 都带 `user_id`，查询与提交按当前用户过滤；用他人 `assetId` 返回 403，读他人任务返回 404（不泄露存在性） |
+| 切换 | 右上角菜单可切换/重新登录；切换时前端 `setQueryData(me)` + `resetQueries(jobs)`，旧账号任务不会残留 |
+
+**演示账号**（`DemoDataSeeder` 启动时写入，口令统一 `demo1234`）：`demo` / `lin` / `chen`。
+登录页的"一键登录"按钮直接使用 `/api/auth/accounts` 下发的演示口令，方便验收，不写死在前端。
+
+**演示方法**：用 `demo` 提交两个任务 → 退出 → 用 `lin` 登录 → 历史为空 → 再切回 `demo` → 任务仍在。
+
+**升级提示**：`schema.sql` 是 `CREATE TABLE IF NOT EXISTS`，如果你之前跑过旧版本（无 `password_hash` 列），执行一次：
+
+```sql
+ALTER TABLE app_user ADD COLUMN password_hash VARCHAR(100) NOT NULL DEFAULT '' AFTER display_name;
+```
+
+应用启动时会给演示账号自动补哈希，其余旧账号需重新注册。
 
 ## 11. 测试与 CI
 
@@ -317,6 +341,8 @@ curl -s -X POST http://localhost:8080/api/dev/simulation \
 | `rejectWhenAssetCountMismatch` | 素材数量与模板要求不符时拒绝受理 |
 | `rejectCrossUserAccess` | 不能使用他人素材、不能读他人任务 |
 | `ImageTypeDetectorTest` | 按魔数识别图片，拒绝伪装文件 |
+| `AuthServiceTest`（4 例） | 注册后可用同口令登录且库中只有 BCrypt 哈希；密码错与账号不存在返回同一错误；重复账号/弱口令/非法账号被拒；演示账号口令可用 |
+| `AuthServiceTest`（4 例） | 注册后可用同口令登录且库中只有 BCrypt 哈希；密码错与账号不存在返回同一错误；重复账号/弱口令/非法账号被拒；演示账号口令可用 |
 
 测试用 **H2（MODE=MySQL）**，无需外部数据库即可 `mvn test`；测试 profile 把执行器替换为同步实现，因此流水线在测试线程内可完整断言。
 
@@ -335,7 +361,7 @@ curl -s -X POST http://localhost:8080/api/dev/simulation \
 
 | 检查项 | 命令 | 结果 |
 |---|---|---|
-| 后端测试 | `mvn test` | 7 个用例全通过（H2） |
+| 后端测试 | `mvn test` | **11 个用例**全通过（H2） |
 | 后端打包 | `mvn -DskipTests package` | 27 MB 可执行 jar |
 | 前端 lint | `npm run lint` | 0 error / 0 warning |
 | 前端类型 | `npm run typecheck` | 通过 |
@@ -371,7 +397,7 @@ push / PR 触发，4 个 job：
 1. **重启恢复**：不实现"服务重启后自动继续执行"。重启时处于 `PROCESSING` 的任务会停留在该状态（题目明确列入"不在范围内"）。取舍：需要持久化调度与租约，代价远超本题范围；README 记录而不隐藏。
 2. **受理幂等 / 断点续跑 / 自动重试**：未实现（题目不要求）。幂等可由客户端 `requestId` + 唯一索引实现，50 行内可加，但会改变接口契约，故只在此讨论。
 3. **Docker 本地验证**：本机无 Docker 且不能 `sudo`，`docker compose up --build` 未在本机跑过；Compose 与 Dockerfile 的正确性依赖 CI 的 `compose` job，以及同一套 Java/Node 构建命令在本机的实测。**这是唯一未在本机验证的交付项。**
-4. **身份是演示级**：无口令、无找回、无 OAuth；会话存库便于演示多账号切换，不适合生产。
+4. **身份是自建账号密码**：BCrypt 存储、会话存库（非 JWT），没有邮箱验证、找回密码、限流与验证码；生产还需加登录失败计数与 CSRF 防护。
 5. **`/api/dev/**` 无鉴权**：仅用于验收演示，生产应移除或加开关（可用 `app.simulation.enabled=false` 关闭，当前未加该开关）。
 6. **结果图排版**：固定三种布局（1/2/3 张），4 张模板只取前 3 张参与合成；画布文字仅 ASCII。
 7. **未做端到端浏览器测试**（题目不要求），前端只覆盖纯逻辑与组件渲染。

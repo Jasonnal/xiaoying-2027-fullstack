@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS app_user (
   id            CHAR(36)     NOT NULL,
   handle        VARCHAR(64)  NOT NULL COMMENT '登录标识，演示账号用固定 handle',
   display_name  VARCHAR(64)  NOT NULL,
+  password_hash VARCHAR(100) NOT NULL COMMENT 'BCrypt 哈希，永不返回给前端',
   accent_color  VARCHAR(16)  NOT NULL COMMENT '头像底色，前端展示用',
   created_at    DATETIME(3)  NOT NULL,
   PRIMARY KEY (id),

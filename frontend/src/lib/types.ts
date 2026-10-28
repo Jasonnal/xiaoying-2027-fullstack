@@ -13,6 +13,8 @@ export interface DemoAccount {
   handle: string;
   displayName: string;
   accentColor: string;
+  /** 演示口令，仅用于一键登录 */
+  password: string;
 }
 
 export interface Template {
