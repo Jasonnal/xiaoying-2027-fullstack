@@ -1,5 +1,9 @@
 # MOTION STUDIO · 素材制作网站
 
+[![CI](https://github.com/Jasonnal/xiaoying-2027-fullstack/actions/workflows/ci.yml/badge.svg)](https://github.com/Jasonnal/xiaoying-2027-fullstack/actions/workflows/ci.yml)
+
+**源码仓库**：<https://github.com/Jasonnal/xiaoying-2027-fullstack>（public）
+
 小影科技 2027 校招 · 全栈开发笔试题实现。
 
 用户浏览模板 → 上传素材 → 提交制作任务 → 任务在 Java 后台按「素材检查 → 模拟生成 → 结果整理」异步执行 → 在历史记录里查看结果。制作不接真实 AI，用可配置耗时与可指定阶段失败的模拟器完成业务闭环。
@@ -87,7 +91,10 @@ docker compose up --build
 首次启动后端会自动建表并写入 8 个模板与 3 个演示账号；`storage` 与 `mysql-data` 为命名数据卷。
 停止：`docker compose down`；连同数据一起清空：`docker compose down -v`。
 
-> 本机（macOS，无 Docker Desktop 且不能 sudo）未执行过 `docker compose up`，此路径由 CI 的 `compose` job 校验与构建（见第 11 节），README 与 CI 配置等价。
+> 本机（macOS，无 Docker Desktop 且不能 sudo）没有 Docker，**未在本机执行过 `docker compose up`**。
+> 该路径由 CI 的 `compose` job 真实验证：`docker compose up -d` 起整栈 → 等前后端就绪 → 依次走完
+> 「账号登录 → 上传素材 → 受理 → 轮询至成功 → 拉取结果图 → 触发指定阶段失败」全链路，
+> 每次 push 自动执行（见第 11 节的 run 记录与日志摘录）。
 
 ### 4.2 方式 B：本机直接运行
 
@@ -372,6 +379,26 @@ ALTER TABLE app_user ADD COLUMN password_hash VARCHAR(100) NOT NULL DEFAULT '' A
 | 手工链路 | 浏览器实跑 | 登录 → 上传（进度）→ 受理 → 阶段推进 → 结果预览；`GENERATE` 失败中断；停后端出现异常提示且可重试；切换账号后历史为空 |
 | Compose | `docker compose config -q` / `up` | **未执行**（本机无 Docker），仅做 YAML 结构解析 |
 
+### CI 实测（GitHub Actions，2026-10-28）
+
+| run | 提交 | 结果 | 说明 |
+|---|---|---|---|
+| [#1](https://github.com/Jasonnal/xiaoying-2027-fullstack/actions/runs/40684418906) | `a1b3c54` | ✅ 4/4 | backend / frontend / mysql-smoke / compose build |
+| [#2](https://github.com/Jasonnal/xiaoying-2027-fullstack/actions/runs/40684984458) | `b2e034e` | ✅ 4/4 | compose job 升级为 `up -d` 起栈 + 端到端冒烟 |
+
+run #2 的 compose 冒烟真实输出（摘自 job 日志）：
+
+```text
+frontend=200
+categories=5 templates=8
+asset=f5cbe544-06a3-4d20-8f13-4e284c072d3b
+job=696b3597-dd4c-427a-aa75-4122c226e7ef
+  SUCCEEDED / DONE
+resultUrl=/api/files/results/696b3597-dd4c-427a-aa75-4122c226e7ef.jpg
+result=200 type=image/jpeg bytes=25928
+{"status":"FAILED","stage":"GENERATE","errorStage":"GENERATE","errorMessage":"模拟生成失败（模拟）：渲染队列返回 500","resultUrl":null}
+```
+
 ### CI（`.github/workflows/ci.yml`）
 
 push / PR 触发，4 个 job：
@@ -396,7 +423,7 @@ push / PR 触发，4 个 job：
 
 1. **重启恢复**：不实现"服务重启后自动继续执行"。重启时处于 `PROCESSING` 的任务会停留在该状态（题目明确列入"不在范围内"）。取舍：需要持久化调度与租约，代价远超本题范围；README 记录而不隐藏。
 2. **受理幂等 / 断点续跑 / 自动重试**：未实现（题目不要求）。幂等可由客户端 `requestId` + 唯一索引实现，50 行内可加，但会改变接口契约，故只在此讨论。
-3. **Docker 本地验证**：本机无 Docker 且不能 `sudo`，`docker compose up --build` 未在本机跑过；Compose 与 Dockerfile 的正确性依赖 CI 的 `compose` job，以及同一套 Java/Node 构建命令在本机的实测。**这是唯一未在本机验证的交付项。**
+3. **Docker 只在本机之外验证过**：本机无 Docker 且不能 `sudo`，未在本机执行 `docker compose up`；容器交付改由 CI 在 GitHub 的 Docker 环境里起整栈并跑端到端冒烟（含真实上传与结果图），已通过。仍未覆盖：arm64 本机镜像构建、容器内长时间运行观察。
 4. **身份是自建账号密码**：BCrypt 存储、会话存库（非 JWT），没有邮箱验证、找回密码、限流与验证码；生产还需加登录失败计数与 CSRF 防护。
 5. **`/api/dev/**` 无鉴权**：仅用于验收演示，生产应移除或加开关（可用 `app.simulation.enabled=false` 关闭，当前未加该开关）。
 6. **结果图排版**：固定三种布局（1/2/3 张），4 张模板只取前 3 张参与合成；画布文字仅 ASCII。
@@ -419,7 +446,8 @@ push / PR 触发，4 个 job：
 
 ## 15. 验收信息与第三方来源
 
-- **功能提交**：`4970804`（特性完整实现）；验收请以仓库 HEAD 为准（`git log -1`），文档微调不影响功能
+- **仓库**：<https://github.com/Jasonnal/xiaoying-2027-fullstack>（public，`main` 分支）
+- **功能提交**：`4970804`（特性完整实现）；验收请以仓库 HEAD 为准（`git log -1`），文档与 CI 微调不影响功能
 - **仓库结构**：单仓双端（`backend/` + `frontend/`），根目录即 Compose 启动点
 
 ### 第三方来源与复用
